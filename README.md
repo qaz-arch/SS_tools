@@ -18,9 +18,6 @@ Your use or deployment of this project shall constitute your acceptance of the a
 
 ![媒体保护工具演示](https://github.com/copyangle/SS_tools/blob/main/test.png "鸭子图媒体保护工具")
 
-## 教学视频：
-<iframe src="//player.bilibili.com/player.html?isOutside=true&aid=115728984316658&bvid=BV1w6qYBREzV&cid=34776351130&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
-
 ## 主要功能和特点：
 - 媒体内容保护：将图片/视频隐藏在卡通鸭子图中，可选密码保护
 - 媒体内容提取：从鸭子图中提取原始图片/视频数据
@@ -33,8 +30,8 @@ Your use or deployment of this project shall constitute your acceptance of the a
 - 小黄鸭解码免费网页版：http://duck.airush.top:81/
 
 ## 相关链接：
-- 视频教程: https://www.bilibili.com/video/BV1w6qYBREzV
-- 视频教程合集：https://space.bilibili.com/3690984330234757/lists/7159610?type=season
+- 解码教学视频: https://www.bilibili.com/video/BV1w6qYBREzV
+- 解码视频教程合集：https://space.bilibili.com/3690984330234757/lists/7159610?type=season
 - 网页版使用教程：https://www.bilibili.com/video/BV1K2icBqES3/
 - 现成工作流：https://www.runninghub.cn/post/2000762471365439490/?inviteCode=rh-v1393
 - 无限制Wan2.2Remix图生视频鸭子图完整演示:https://www.runninghub.cn/ai-detail/2000755012961792002/?inviteCode=rh-v1393
