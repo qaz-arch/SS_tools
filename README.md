@@ -18,6 +18,9 @@ Your use or deployment of this project shall constitute your acceptance of the a
 
 ![媒体保护工具演示](https://github.com/copyangle/SS_tools/blob/main/test.png "鸭子图媒体保护工具")
 
+## 教学视频：
+<iframe src="//player.bilibili.com/player.html?isOutside=true&aid=115728984316658&bvid=BV1w6qYBREzV&cid=34776351130&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true"></iframe>
+
 ## 主要功能和特点：
 - 媒体内容保护：将图片/视频隐藏在卡通鸭子图中，可选密码保护
 - 媒体内容提取：从鸭子图中提取原始图片/视频数据
@@ -54,6 +57,7 @@ Your use or deployment of this project shall constitute your acceptance of the a
 
 ## 本地节点部署方法
 - 部署：
+  - 需要安装ffmpeg，可从https://ffmpeg.org/download.html 下载,并添加到环境变量中
   - cd `ComfyUI/custom_nodes/`
   - git clone git@github.com:copyangle/SS_tools.git
   - cd SS_tools
