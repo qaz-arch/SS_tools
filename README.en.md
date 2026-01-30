@@ -3,7 +3,7 @@
   <a href="README.en.md">🇬🇧 English</a>
 </div>
 
-# SSTool Super-SecureMediaProtection Media Content Protection
+# SSTool Super-SecureMediaProtection Media Content Protection V1.2
 
 Disclaimer:
 The original intention of this project is to provide an interesting file packaging method, and no commercial use has been considered.
