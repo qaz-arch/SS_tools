@@ -142,8 +142,8 @@ class DuckDecodeNode:
             },
         }
 
-    RETURN_TYPES = ("IMAGE", "AUDIO", "STRING", "INT")
-    RETURN_NAMES = ("images", "audio", "file_path", "fps")
+    RETURN_TYPES = ("IMAGE", "AUDIO", "STRING", "INT", "STRING")
+    RETURN_NAMES = ("images", "audio", "file_path", "fps", "text_output")
     FUNCTION = "decode"
     CATEGORY = CATEGORY
 
@@ -154,6 +154,7 @@ class DuckDecodeNode:
         raw = None
         ext = None
         last_err = None
+        text_output = ""
         for k in (2, 6, 8):
             try:
                 header = _extract_payload_with_k(arr, k)
@@ -186,6 +187,16 @@ class DuckDecodeNode:
             final_path = out_path + ("." + ext if not ext.startswith(".") else ext)
             with open(final_path, "wb") as f:
                 f.write(raw)
+            
+            if ext.lower() == "txt":
+                try:
+                    text_output = raw.decode("utf-8")
+                except Exception:
+                    # try other encoding or ignore
+                    try:
+                        text_output = raw.decode("gbk")
+                    except Exception:
+                        text_output = f"Error decoding text content from {final_path}"
 
         img_tensor = None
         audio_out = None
@@ -331,7 +342,7 @@ class DuckDecodeNode:
         else:
             img_tensor = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
 
-        return (img_tensor, audio_out, final_path, fps_out)
+        return (img_tensor, audio_out, final_path, fps_out, text_output)
 
 
 NODE_CLASS_MAPPINGS = {"DuckDecodeNode": DuckDecodeNode}

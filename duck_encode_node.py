@@ -180,6 +180,7 @@ class DuckHideNode:
             "optional": {
                 "images": ("IMAGE",),
                 "audio": ("AUDIO",),
+                "text_input": ("STRING", {"forceInput": True}),
             },
         }
 
@@ -285,13 +286,30 @@ class DuckHideNode:
 
         return video_bytes
 
-    def hide(self, fps: float, password: str, title: str, compress: int, combine_video: bool, images=None, audio=None, Notes: str = ""):
-        return self._hide(fps, password, title, compress, combine_video, images, audio, Notes)
+    def hide(self, fps: float, password: str, title: str, compress: int, combine_video: bool, images=None, audio=None, Notes: str = "", text_input: str = ""):
+        return self._hide(fps, password, title, compress, combine_video, images, audio, Notes, text_input=text_input)
 
-    def _hide(self, fps: float, password: str, title: str, compress: int, combine_video: bool, images=None, audio=None, Notes: str = "", video_path=""):
+    def _hide(self, fps: float, password: str, title: str, compress: int, combine_video: bool, images=None, audio=None, Notes: str = "", video_path="", text_input: str = ""):
+        # 优先处理文本输入
+        if text_input and text_input.strip():
+            raw_bytes = text_input.encode("utf-8")
+            ext = "txt"
+            
+            out_path, duck_img = export_duck_payload(
+                raw_bytes=raw_bytes,
+                password=password,
+                ext=ext,
+                compress=compress,
+                title=title,
+                output_dir=(folder_paths.get_output_directory() if folder_paths else os.getcwd()),
+                output_name="duck_payload_txt.png",
+            )
+            duck_tensor = _pil_to_tensor(duck_img)
+            return (duck_tensor,)
+
         # image 
         if images is None and not video_path:
-            raise ValueError("Images or video_path required. 需要提供 images 或 video_path 。")
+            raise ValueError("Images, video_path or text_input required. 需要提供 images, video_path 或 text_input 。")
 
         if isinstance(images, (torch.Tensor, np.ndarray)):
             # 获取维度：3维=单帧，4维=多帧序列
