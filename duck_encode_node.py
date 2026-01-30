@@ -4,7 +4,16 @@ import os
 import os
 import struct
 from typing import Tuple, List, Any
-from moviepy import ImageSequenceClip, AudioFileClip, concatenate_audioclips
+try:
+    from moviepy.editor import ImageSequenceClip, AudioFileClip, concatenate_audioclips
+except ImportError:
+    try:
+        from moviepy import ImageSequenceClip, AudioFileClip, concatenate_audioclips
+    except ImportError:
+        print("❌ MoviePy import failed. Please install moviepy: pip install moviepy")
+        ImageSequenceClip = None
+        AudioFileClip = None
+        concatenate_audioclips = None
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import torch
@@ -13,7 +22,11 @@ try:
     import folder_paths  # type: ignore
 except Exception:  # pragma: no cover
     folder_paths = None
-from .duck_payload_exporter import export_duck_payload, _bytes_to_binary_image
+
+try:
+    from .duck_payload_exporter import export_duck_payload, _bytes_to_binary_image, _required_canvas_size, _build_file_header
+except ImportError:
+    from duck_payload_exporter import export_duck_payload, _bytes_to_binary_image, _required_canvas_size, _build_file_header
 
 
 # 分类名称要求
@@ -52,6 +65,9 @@ def export_lazy_audio_to_file(audio_obj) -> str:
 
 
     temp_audio_path = tempfile.mkstemp(suffix=".wav")
+    # mkstemp返回(fd, path)，我们需要path，并关闭fd
+    os.close(temp_audio_path[0])
+    temp_audio_path = temp_audio_path[1]
 
     try:
 
@@ -81,20 +97,36 @@ def export_lazy_audio_to_file(audio_obj) -> str:
 
         elif isinstance(audio_obj, dict):
             import soundfile as sf
-            data = audio_obj.get("samples") or audio_obj.get("audio")
+            # 优先检查 waveform (ComfyUI 标准格式)
+            data = audio_obj.get("waveform")
+            if data is None:
+                data = audio_obj.get("samples") or audio_obj.get("audio")
+            
             sr = audio_obj.get("sample_rate") or audio_obj.get("samplerate") or 44100
+            
             if data is not None:
-                arr = np.array(data)
+                # 处理 Tensor 转 numpy
+                if hasattr(data, "cpu"):
+                    arr = data.detach().cpu().numpy()
+                else:
+                    arr = np.array(data)
+                
+                # 处理维度 (Batch, Channels, Samples)
+                if arr.ndim == 3:
+                    arr = arr.squeeze(0)  # 移除 batch 维度 (1, C, N) -> (C, N)
+                
                 if arr.ndim == 1:
                     arr = arr[:, None]
+                # (Channels, Samples) -> (Samples, Channels) for soundfile
                 if arr.ndim == 2 and arr.shape[0] < arr.shape[1]:
                     arr = arr.T
+                
                 sf.write(temp_audio_path, arr, samplerate=int(sr))
                 print(f"✅ 导出dict音频为WAV：{temp_audio_path}")
                 print(f"✅ Export dict audio to WAV: {temp_audio_path}")
                 return temp_audio_path
 
-        elif isinstance(audio_obj, tuple) and len(audio_obj) >= 1:
+        elif isinstance(audio_obj, (tuple, list)) and len(audio_obj) >= 1:
             import soundfile as sf
             arr = np.array(audio_obj[0])
             sr = audio_obj[1] if len(audio_obj) > 1 else 44100
@@ -103,8 +135,8 @@ def export_lazy_audio_to_file(audio_obj) -> str:
             if arr.ndim == 2 and arr.shape[0] < arr.shape[1]:
                 arr = arr.T
             sf.write(temp_audio_path, arr, samplerate=int(sr))
-            print(f"✅ 导出tuple音频为WAV：{temp_audio_path}")
-            print(f"✅ Export tuple audio to WAV: {temp_audio_path}")
+            print(f"✅ 导出tuple/list音频为WAV：{temp_audio_path}")
+            print(f"✅ Export tuple/list audio to WAV: {temp_audio_path}")
             return temp_audio_path
 
         elif isinstance(audio_obj, str):
@@ -136,12 +168,13 @@ class DuckHideNode:
                 "title": ("STRING", {"default": "", "multiline": False}),
                 "fps": ("INT", {"default": 16, "min": 1, "max": 60, "step": 1}),
                 "compress": ([2, 6, 8], {"default": 2}),
+                "combine_video": ("BOOLEAN", {"default": True}),
                 "Notes": ("STRING", {
                     "multiline": True,        # 核心：开启多行模式
-                    "default": "使用方法：https://github.com/copyangle/SS_tools\n1. 支持图片/视频隐写保护\n2. compress: 2/6/8 选择压缩方式，8为最小体积",  # 多行默认内容
+                    "default": "此节点仅用于作品内容保护，使用即承诺符合法律法规，自愿承担全部风险与责任\n使用方法：https://github.com/copyangle/SS_tools\n教学视频：https://space.bilibili.com/3690984330234757/lists/7159610\n交流一群：1067393850 二群：690810507\n1. 支持图片/视频隐写保护\n2. compress: 2/6/8 选择压缩方式，8为最小体积",  # 多行默认内容
                     "placeholder": "使用方法：https://github.com/copyangle/SS_tools",  # 输入提示（可选）
                     "dynamicPrompts": False,  # 关闭动态提示（按需开启）
-                    "rows": 3,                # 可选：指定输入框默认行数（视觉效果）
+                    "rows": 5,                # 可选：指定输入框默认行数（视觉效果）
                 }),
             },
             "optional": {
@@ -174,7 +207,7 @@ class DuckHideNode:
         audio_path = export_lazy_audio_to_file(audio)
         return audio_path
 
-    def _images_to_video(self, images: List[Image.Image], fps: int,audio: Any) -> np.ndarray:
+    def _images_to_video(self, images: List[Image.Image], fps: float, audio: Any) -> np.ndarray:
         # """将多张图片合成视频"""
         frame_list = []
         for img in images:
@@ -193,20 +226,33 @@ class DuckHideNode:
             if audio_path is not None:
                 audio_clip = AudioFileClip(audio_path)
                 if audio_clip.duration > clip.duration:
-                    audio_clip = audio_clip.subclip(0, clip.duration)
+                    if hasattr(audio_clip, 'subclip'):
+                        audio_clip = audio_clip.subclip(0, clip.duration)
+                    else:
+                        audio_clip = audio_clip.subclipped(0, clip.duration)
                 else:
                     repeats = int(clip.duration // audio_clip.duration)
                     remainder = clip.duration - repeats * audio_clip.duration
                     parts = []
                     if repeats <= 0:
-                        parts.append(audio_clip.subclip(0, min(audio_clip.duration, clip.duration)))
+                        if hasattr(audio_clip, 'subclip'):
+                             parts.append(audio_clip.subclip(0, min(audio_clip.duration, clip.duration)))
+                        else:
+                             parts.append(audio_clip.subclipped(0, min(audio_clip.duration, clip.duration)))
                     else:
                         for _ in range(repeats):
                             parts.append(audio_clip)
                         if remainder > 0:
-                            parts.append(audio_clip.subclip(0, remainder))
+                            if hasattr(audio_clip, 'subclip'):
+                                parts.append(audio_clip.subclip(0, remainder))
+                            else:
+                                parts.append(audio_clip.subclipped(0, remainder))
                     audio_clip = concatenate_audioclips(parts)
-                clip = clip.with_audio(audio_clip)
+                
+                if hasattr(clip, 'set_audio'):
+                     clip = clip.set_audio(audio_clip)
+                else:
+                     clip = clip.with_audio(audio_clip)
         try:
         # 先写入临时内存文件，再读取二进制
             with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
@@ -239,10 +285,10 @@ class DuckHideNode:
 
         return video_bytes
 
-    def hide(self, fps: int , password: str, title: str , compress: int, images=None, audio=None, Notes: str = ""):
-        return self._hide(fps, password, title, compress, images, audio, Notes)
+    def hide(self, fps: float, password: str, title: str, compress: int, combine_video: bool, images=None, audio=None, Notes: str = ""):
+        return self._hide(fps, password, title, compress, combine_video, images, audio, Notes)
 
-    def _hide(self, fps: int , password: str, title: str , compress: int, images=None, audio=None, Notes: str = "", video_path=""):
+    def _hide(self, fps: float, password: str, title: str, compress: int, combine_video: bool, images=None, audio=None, Notes: str = "", video_path=""):
         # image 
         if images is None and not video_path:
             raise ValueError("Images or video_path required. 需要提供 images 或 video_path 。")
@@ -283,6 +329,59 @@ class DuckHideNode:
                 orig_ext = os.path.splitext(video_path)[1].lower().lstrip('.')
                 ext = f"{orig_ext}.binpng"
 
+        elif not combine_video and frame_count > 1:
+            print("Output as image list (输出为图片列表)")
+            duck_results = []
+            
+            # 预处理：生成所有 raw_bytes 并计算最大所需尺寸，确保所有输出图片尺寸一致且数据结构完整
+            raw_bytes_list = []
+            max_required_size = 0
+            lsb_bits = 8 if compress >= 8 else (6 if compress >= 6 else 2)
+            
+            for i, frame_tensor in enumerate(frame_list):
+                pil = _tensor_to_pil(frame_tensor)
+                with io.BytesIO() as buf:
+                    pil.save(buf, format="PNG")
+                    raw_bytes = buf.getvalue()
+                raw_bytes_list.append(raw_bytes)
+                
+                # 计算所需尺寸
+                ext = "png"
+                file_header = _build_file_header(raw_bytes, password, ext=ext)
+                req_size = _required_canvas_size((len(file_header) + 4) * 8, lsb_bits)
+                if req_size > max_required_size:
+                    max_required_size = req_size
+            
+            print(f"Unified canvas size for image list: {max_required_size}x{max_required_size}")
+            
+            # 内存优化：预分配最终 Tensor，避免 torch.cat 带来的内存峰值 (List + Tensor 双倍占用)
+            # 形状: (frame_count, H, W, C)
+            result_tensor = torch.zeros((frame_count, max_required_size, max_required_size, 3), dtype=torch.float32)
+            
+            for i, raw_bytes in enumerate(raw_bytes_list):
+                ext = "png"
+                out_name = f"duck_payload_seq_{i:05d}.png" 
+                
+                out_path, duck_img = export_duck_payload(
+                    raw_bytes=raw_bytes,
+                    password=password,
+                    ext=ext,
+                    compress=compress,
+                    title=f"{title} ({i+1}/{frame_count})",
+                    output_dir=(folder_paths.get_output_directory() if folder_paths else os.getcwd()),
+                    output_name=out_name,
+                    fixed_size=max_required_size, # 强制使用统一尺寸
+                )
+                
+                # 直接写入预分配的 Tensor
+                # _pil_to_tensor 返回 (1, H, W, C)，我们需要 [0] 取出 (H, W, C)
+                result_tensor[i] = _pil_to_tensor(duck_img)[0]
+            
+            # 清理 raw_bytes_list 以释放内存 (虽然 Python 会自动回收，但显式清理是个好习惯)
+            del raw_bytes_list
+
+            return (result_tensor,)
+
         elif frame_count > 1:
             print("检测到视频输入，合成视频中")
             print("Detected video input, composing video")
@@ -320,5 +419,5 @@ class DuckHideNode:
 
 
 NODE_CLASS_MAPPINGS = {"DuckHideNode": DuckHideNode}
-NODE_DISPLAY_NAME_MAPPINGS = {"DuckHideNode": "SSuper-SecureMediaProtection媒体内容保护V1.1"}
+NODE_DISPLAY_NAME_MAPPINGS = {"DuckHideNode": "SSuper-SecureMediaProtection媒体内容保护V1.2"}
 

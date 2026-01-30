@@ -182,10 +182,19 @@ def export_duck_payload(
     title: str,
     output_dir: Optional[str] = None,
     output_name: str = "duck_payload.png",
+    fixed_size: Optional[int] = None,
 ) -> Tuple[str, Image.Image]:
     file_header = _build_file_header(raw_bytes, password, ext=ext)
     lsb_bits = 8 if compress >= 8 else (6 if compress >= 6 else 2)
     required_size = _required_canvas_size((len(file_header) + 4) * 8, lsb_bits)
+    
+    if fixed_size is not None:
+        if fixed_size < required_size:
+            # 如果固定尺寸小于所需尺寸，打印警告但仍使用所需尺寸以避免数据溢出
+            print(f"Warning: fixed_size {fixed_size} is smaller than required {required_size}, using {required_size}")
+        else:
+            required_size = fixed_size
+            
     duck_img = _build_duck_image(size=required_size, title=title)
     duck_img = _embed_payload_lsb(duck_img, file_header, lsb_bits)
     base_dir = output_dir or (folder_paths.get_output_directory() if folder_paths else os.getcwd())

@@ -45,6 +45,7 @@ Workflow for extracting images and videos
 
 ## Local Node Deployment Method
 - Method 1:
+  - Requires installation of ffmpeg, available from https://ffmpeg.org/download.html and added to the environment variables
   - cd `ComfyUI/custom_nodes/`
   - git clone git@github.com:copyangle/SS_tools.git
   - cd SS_tools

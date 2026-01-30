@@ -1,12 +1,21 @@
 import io
 import os
 import struct
-import subprocess
 import numpy as np
+import subprocess
 from typing import Any, List
 from PIL import Image
 import torch
-from moviepy import VideoFileClip
+try:
+    import moviepy
+    from moviepy.editor import VideoFileClip
+except ImportError:
+    try:
+        import moviepy
+        from moviepy import VideoFileClip
+    except ImportError:
+        print("❌ MoviePy import failed in duck_decode_node.")
+        VideoFileClip = None
 try:
     import folder_paths  # type: ignore
 except Exception:
@@ -124,11 +133,11 @@ class DuckDecodeNode:
                 "password": ("STRING", {"default": "", "multiline": False}),
                 "Notes": ("STRING", {
                     "multiline": True,  # 核心：开启多行模式
-                    "default": "使用方法：https://github.com/copyangle/SS_tools\n支持图片/视频隐写保护\n此版本暂时无法解码带音频的视频，请用本地工具解，解决中",
+                    "default": "此节点仅用于作品内容保护，使用即承诺符合法律法规，自愿承担全部风险与责任\n使用方法：https://github.com/copyangle/SS_tools\n教学视频：https://space.bilibili.com/3690984330234757/lists/7159610\n交流一群：1067393850 二群：690810507\n1. 支持图片/视频隐写保护\n2. compress: 2/6/8 选择压缩方式，8为最小体积",  # 多行默认内容
                     # 多行默认内容
                     "placeholder": "使用方法：https://github.com/copyangle/SS_tools",  # 输入提示（可选）
                     "dynamicPrompts": False,  # 关闭动态提示（按需开启）
-                    "rows": 2,  # 可选：指定输入框默认行数（视觉效果）
+                    "rows": 3,  # 可选：指定输入框默认行数（视觉效果）
                 }),
             },
         }
@@ -186,50 +195,126 @@ class DuckDecodeNode:
         elif final_ext.lower() == "mp4":
             clip = VideoFileClip(final_path)
             fps_out = int(round(clip.fps)) if clip.fps else 0
-            times: List[float] = []
-            try:
-                cmd = [
-                    "ffprobe", "-v", "error",
-                    "-select_streams", "v:0",
-                    "-show_frames",
-                    "-show_entries", "frame=pkt_pts_time,key_frame",
-                    "-of", "csv=print_section=0",
-                    final_path,
-                ]
-                res = subprocess.run(cmd, capture_output=True, text=True, check=False)
-                for line in res.stdout.splitlines():
-                    if "key_frame=1" in line:
-                        # extract time after pkt_pts_time=
-                        t = None
-                        for part in line.split(","):
-                            if "pkt_pts_time=" in part:
-                                try:
-                                    t = float(part.split("=")[1])
-                                except Exception:
-                                    t = None
-                        if t is not None:
-                            times.append(t)
-            except Exception:
-                pass
-            if not times:
-                times = [i / max(1, fps_out) for i in range(int(clip.duration * max(1, fps_out)))]
-            frames: List[np.ndarray] = []
-            for t in times:
+            # 优化：直接使用 reader.nframes 或 duration * fps 计算总帧数，不再依赖 ffprobe
+            frame_count = 0
+            if hasattr(clip, 'reader') and hasattr(clip.reader, 'nframes') and clip.reader.nframes:
+                 frame_count = clip.reader.nframes
+            else:
+                 # Fallback: 使用 round 避免浮点精度导致的少帧问题
+                 frame_count = int(round(clip.duration * max(1, fps_out)))
+            
+            img_tensor = None
+            
+            if frame_count > 0:
                 try:
-                    frames.append(clip.get_frame(t))
-                except Exception:
-                    continue
-            if len(frames) == 0:
+                    # 获取第一帧以确定尺寸
+                    # 优先使用 iter_frames 获取第一帧，避免 seek
+                    first_frame_iter = clip.iter_frames(fps=None)
+                    first_frame = next(first_frame_iter)
+                    h, w, c = first_frame.shape
+                    # 预分配内存：直接申请最终所需空间，避免 List + Stack 的双倍内存峰值
+                    img_tensor = torch.zeros((frame_count, h, w, c), dtype=torch.float32)
+                except Exception as e:
+                    print(f"Error initializing video tensor: {e}")
+                    img_tensor = None
+
+            if img_tensor is None:
                 img_tensor = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
             else:
-                arr = np.stack(frames, axis=0).astype(np.float32) / 255.0
-                img_tensor = torch.from_numpy(arr)
+                # 使用 iter_frames 顺序读取，比 get_frame(t) 更快更准
+                # fps=None 表示输出原始帧
+                for i, frame in enumerate(clip.iter_frames(fps=None)):
+                    if i >= frame_count:
+                        break
+                    try:
+                        # 直接写入预分配位置，不产生额外的 Tensor 副本
+                        # 修复 numpy 不可写警告：先复制一份数据
+                        frame_copy = frame.copy()
+                        img_tensor[i] = torch.from_numpy(frame_copy).float().div(255.0)
+                    except Exception as e:
+                        print(f"Frame decode error at index {i}: {e}")
+                        continue
+            
             if clip.audio is not None:
                 # todo 这个部分与RH平台存在包冲突
                 try:
                     sr_attr = getattr(clip.audio, "fps", None)
                     sr = int(round(sr_attr)) if sr_attr else 44100
-                    audio_np = clip.audio.to_soundarray(fps=sr)
+                    
+                    audio_np = None
+                    
+                    # 判断 MoviePy 版本，如果是 1.x 则直接使用 ffmpeg 提取
+                    is_moviepy_1x = False
+                    if hasattr(moviepy, "__version__") and moviepy.__version__.startswith("1."):
+                        is_moviepy_1x = True
+                    
+                    if is_moviepy_1x:
+                        try:
+                            # 使用 ffmpeg 直接提取音频为 raw float32 pcm
+                            # -vn: 禁用视频
+                            # -f f32le: 输出格式 float32 little endian
+                            # -acodec pcm_f32le: 编码器
+                            # -ar {sr}: 采样率
+                            # -ac 2: 声道数 (强制双声道以简化处理，或者先探测？这里假设双声道通用)
+                            # -: 输出到 stdout
+                            cmd = [
+                                "ffmpeg",
+                                "-v", "error",
+                                "-i", final_path,
+                                "-vn",
+                                "-f", "f32le",
+                                "-acodec", "pcm_f32le",
+                                "-ar", str(sr),
+                                "-ac", "2",
+                                "-"
+                            ]
+                            # 运行命令并获取输出
+                            process = subprocess.run(cmd, capture_output=True, check=True)
+                            raw_audio = process.stdout
+                            
+                            if raw_audio:
+                                audio_np = np.frombuffer(raw_audio, dtype=np.float32)
+                                audio_np = audio_np.reshape(-1, 2) # 重塑为 (Samples, Channels=2)
+                        except Exception as e:
+                            print(f"FFmpeg audio extraction failed: {e}")
+                            audio_np = None
+
+                    # 如果不是 1.x 或者 ffmpeg 失败，尝试原有的 moviepy 逻辑 (作为 fallback 或主逻辑)
+                    if audio_np is None and not is_moviepy_1x:
+                        try:
+                            audio_np = clip.audio.to_soundarray(fps=sr, nbytes=4)
+                        except Exception:
+                            pass
+                        
+                        if audio_np is None:
+                            # Fallback: 手动读取音频块
+                            try:
+                                chunks = []
+                                iterator = None
+                                try:
+                                    iterator = clip.audio.iter_chunks(fps=sr, nbytes=4, quantize=False)
+                                except TypeError:
+                                    iterator = clip.audio.iter_chunks(fps=sr)
+                                
+                                if iterator:
+                                    for chunk in iterator:
+                                        chunks.append(chunk)
+                                
+                                if len(chunks) > 0:
+                                    audio_np = np.vstack(chunks)
+                            except Exception as e:
+                                print(f"Manual audio chunk read failed: {e}")
+                        
+                        if audio_np is None:
+                             try:
+                                 audio_np = clip.audio.to_soundarray()
+                             except Exception:
+                                 pass
+
+                    if audio_np is None:
+                         print("Audio decoding completely failed, returning silent audio.")
+                         audio_np = np.zeros((sr, 2), dtype=np.float32)
+
                     # 归一化处理
                     max_val = np.max(np.abs(audio_np))
                     if max_val > 0:
@@ -241,7 +326,7 @@ class DuckDecodeNode:
                     audio_out = {"waveform": wf, "sample_rate": sr}
                 except Exception as e:
                     audio_out = None
-                    print(e)
+                    print(f"Audio decode error: {e}")
             clip.close()
         else:
             img_tensor = torch.zeros((1, 1, 1, 3), dtype=torch.float32)
@@ -250,4 +335,4 @@ class DuckDecodeNode:
 
 
 NODE_CLASS_MAPPINGS = {"DuckDecodeNode": DuckDecodeNode}
-NODE_DISPLAY_NAME_MAPPINGS = {"DuckDecodeNode": "SSuper-SecureMediaProtection dec媒体内容保护解码V1.1"}
+NODE_DISPLAY_NAME_MAPPINGS = {"DuckDecodeNode": "SSuper-SecureMediaProtection dec媒体内容保护解码V1.2"}
