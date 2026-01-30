@@ -42,6 +42,8 @@ Workflow for extracting images and videos
 ![Media Protection Tool Demo](https://github.com/copyangle/SS_tools/blob/main/Workflow%20Example/decode_img.png "Duck Image Media Protection Tool")
 ![Media Protection Tool Demo](https://github.com/copyangle/SS_tools/blob/main/Workflow%20Example/decode_video.png "Duck Image Media Protection Tool")
 
+Workflow for String
+![Media Protection Tool Demo](https://github.com/copyangle/SS_tools/blob/main/Workflow%20Example/encode_decode_string.png "Duck Image Media Protection Tool")
 
 ## Local Node Deployment Method
 - Method 1:

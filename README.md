@@ -51,6 +51,8 @@ Your use or deployment of this project shall constitute your acceptance of the a
 ![媒体保护工具演示](https://github.com/copyangle/SS_tools/blob/main/Workflow%20Example/decode_img.png "鸭子图媒体保护工具")
 ![媒体保护工具演示](https://github.com/copyangle/SS_tools/blob/main/Workflow%20Example/decode_video.png "鸭子图媒体保护工具")
 
+文本编码解码工作流
+![媒体保护工具演示](https://github.com/copyangle/SS_tools/blob/main/Workflow%20Example/encode_decode_string.png "鸭子图媒体保护工具")
 
 ## 本地节点部署方法
 - 部署：
