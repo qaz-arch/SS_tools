@@ -217,51 +217,91 @@ class DuckHideNode:
 
         clip = ImageSequenceClip(frame_list, fps=fps)
         audio_clip = None
+        
+        # 1. 尝试加载音频
         if audio is not None and audio != "":
-            print("检测到音频输入，嵌入视频中")
-            print("Audio detected, embedding into video")
-            # 处理ComfyUI的AUDIO输入（兼容路径/二进制数据）
-            audio_path = self._parse_comfy_audio(audio)
-            print("audio_path：",audio_path)
-            print("audio_path:", audio_path)
-            if audio_path is not None:
-                audio_clip = AudioFileClip(audio_path)
-                if audio_clip.duration > clip.duration:
-                    if hasattr(audio_clip, 'subclip'):
-                        audio_clip = audio_clip.subclip(0, clip.duration)
-                    else:
-                        audio_clip = audio_clip.subclipped(0, clip.duration)
-                else:
-                    repeats = int(clip.duration // audio_clip.duration)
-                    remainder = clip.duration - repeats * audio_clip.duration
-                    parts = []
-                    if repeats <= 0:
-                        if hasattr(audio_clip, 'subclip'):
-                             parts.append(audio_clip.subclip(0, min(audio_clip.duration, clip.duration)))
-                        else:
-                             parts.append(audio_clip.subclipped(0, min(audio_clip.duration, clip.duration)))
-                    else:
-                        for _ in range(repeats):
-                            parts.append(audio_clip)
-                        if remainder > 0:
-                            if hasattr(audio_clip, 'subclip'):
-                                parts.append(audio_clip.subclip(0, remainder))
-                            else:
-                                parts.append(audio_clip.subclipped(0, remainder))
-                    audio_clip = concatenate_audioclips(parts)
+            try:
+                print("检测到音频输入，尝试嵌入视频中")
+                print("Audio detected, attempting to embed into video")
+                audio_path = self._parse_comfy_audio(audio)
+                print("audio_path:", audio_path)
                 
+                if audio_path is not None:
+                    try:
+                        loaded_audio = AudioFileClip(audio_path)
+                        # 检查音频有效性
+                        if loaded_audio.duration <= 0.05:
+                            print(f"⚠️ Audio duration too short ({loaded_audio.duration}s), ignoring audio.")
+                            loaded_audio.close()
+                            audio_clip = None
+                        else:
+                            audio_clip = loaded_audio
+                    except Exception as e:
+                         print(f"⚠️ Failed to load AudioFileClip: {e}, ignoring audio.")
+                         audio_clip = None
+
+                    if audio_clip:
+                        # 音频处理逻辑 (循环/截断)
+                        if audio_clip.duration > clip.duration:
+                            if hasattr(audio_clip, 'subclip'):
+                                audio_clip = audio_clip.subclip(0, clip.duration)
+                            else:
+                                audio_clip = audio_clip.subclipped(0, clip.duration)
+                        else:
+                            repeats = int(clip.duration // audio_clip.duration)
+                            remainder = clip.duration - repeats * audio_clip.duration
+                            parts = []
+                            if repeats <= 0:
+                                if hasattr(audio_clip, 'subclip'):
+                                     parts.append(audio_clip.subclip(0, min(audio_clip.duration, clip.duration)))
+                                else:
+                                     parts.append(audio_clip.subclipped(0, min(audio_clip.duration, clip.duration)))
+                            else:
+                                for _ in range(repeats):
+                                    parts.append(audio_clip)
+                                if remainder > 0:
+                                    if hasattr(audio_clip, 'subclip'):
+                                        parts.append(audio_clip.subclip(0, remainder))
+                                    else:
+                                        parts.append(audio_clip.subclipped(0, remainder))
+                            audio_clip = concatenate_audioclips(parts)
+                        
+                        # 设置音频到视频剪辑
+                        if hasattr(clip, 'set_audio'):
+                             clip = clip.set_audio(audio_clip)
+                        else:
+                             clip = clip.with_audio(audio_clip)
+            except Exception as e:
+                print(f"⚠️ Audio processing error: {e}, continue without audio.")
+                if audio_clip:
+                    audio_clip.close()
+                audio_clip = None
+                # 移除已设置的音频
                 if hasattr(clip, 'set_audio'):
-                     clip = clip.set_audio(audio_clip)
+                     clip = clip.set_audio(None)
                 else:
-                     clip = clip.with_audio(audio_clip)
+                     clip = clip.with_audio(None)
+
+        # 2. 尝试写入视频文件 (带重试机制)
+        temp_video_path = None
         try:
-        # 先写入临时内存文件，再读取二进制
-            with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
-                temp_video_path = tf.name
-                clip.write_videofile(
-                    temp_video_path ,
+            def write_video(use_audio=True):
+                # 必须 delete=False 否则 win 下无法读取
+                with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tf:
+                    t_path = tf.name
+                
+                # 如果不使用音频，强制移除
+                current_clip = clip
+                if not use_audio:
+                    if hasattr(current_clip, 'set_audio'):
+                        current_clip = current_clip.set_audio(None)
+                    else:
+                        current_clip = current_clip.with_audio(None)
+
+                current_clip.write_videofile(
+                    t_path,
                     codec="libx264",
-                    audio_codec="aac",
+                    audio_codec="aac" if use_audio and current_clip.audio else None,
                     fps=fps,
                     ffmpeg_params=[
                         "-pix_fmt","yuv420p",
@@ -271,18 +311,43 @@ class DuckHideNode:
                         "-movflags","+faststart"
                     ]
                 )
-            # 读取临时文件为二进制数据
+                return t_path
+
+            try:
+                # 第一次尝试：如果 audio_clip 存在，则尝试带音频写入
+                temp_video_path = write_video(use_audio=(audio_clip is not None))
+            except (IndexError, OSError, Exception) as e:
+                if audio_clip is not None:
+                    print(f"❌ Video encoding with audio failed: {e}")
+                    print("🔄 Retrying without audio...")
+                    # 清理第一次失败的临时文件 (如果有)
+                    if temp_video_path and os.path.exists(temp_video_path):
+                        try:
+                            os.unlink(temp_video_path)
+                        except:
+                            pass
+                    # 重试不带音频
+                    temp_video_path = write_video(use_audio=False)
+                else:
+                    # 如果本来就没音频还失败了，那就真失败了
+                    raise e
+
+            # 读取最终成功的临时文件
             with open(temp_video_path, "rb") as f:
                 video_bytes = f.read()
+
         finally:
-            # 强制释放资源（避免句柄占用）
+            # 强制释放资源
             clip.close()
             if audio_clip:
                 audio_clip.close()
-            # print("temp_video_path：",temp_video_path)
-            # 删除临时文件（清理磁盘）
+            
+            # 删除临时文件
             if temp_video_path and os.path.exists(temp_video_path):
-                os.unlink(temp_video_path)
+                try:
+                    os.unlink(temp_video_path)
+                except:
+                    pass
 
         return video_bytes
 
