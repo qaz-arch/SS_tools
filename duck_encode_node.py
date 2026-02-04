@@ -502,5 +502,5 @@ class DuckHideNode:
 
 
 NODE_CLASS_MAPPINGS = {"DuckHideNode": DuckHideNode}
-NODE_DISPLAY_NAME_MAPPINGS = {"DuckHideNode": "SSuper-SecureMediaProtection媒体内容保护V1.2"}
+NODE_DISPLAY_NAME_MAPPINGS = {"DuckHideNode": "鸭鸭图 SuperSecureMediaProtection媒体内容保护 编码V1.2"}
 

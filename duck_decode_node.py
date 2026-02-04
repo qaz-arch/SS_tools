@@ -133,7 +133,7 @@ class DuckDecodeNode:
                 "password": ("STRING", {"default": "", "multiline": False}),
                 "Notes": ("STRING", {
                     "multiline": True,  # 核心：开启多行模式
-                    "default": "此节点仅用于作品内容保护，使用即承诺符合法律法规，自愿承担全部风险与责任\n使用方法：https://github.com/copyangle/SS_tools\n教学视频：https://space.bilibili.com/3690984330234757/lists/7159610\n交流一群：1067393850 二群：690810507\n1. 支持图片/视频隐写保护\n2. compress: 2/6/8 选择压缩方式，8为最小体积",  # 多行默认内容
+                    "default": "此节点仅用于作品内容保护，使用即承诺符合法律法规，自愿承担全部风险与责任\n使用方法：https://github.com/copyangle/SS_tools\n教学视频：https://space.bilibili.com/3690984330234757/lists/7159610\n交流一群：1067393850 二群：690810507",  # 多行默认内容
                     # 多行默认内容
                     "placeholder": "使用方法：https://github.com/copyangle/SS_tools",  # 输入提示（可选）
                     "dynamicPrompts": False,  # 关闭动态提示（按需开启）
@@ -346,4 +346,4 @@ class DuckDecodeNode:
 
 
 NODE_CLASS_MAPPINGS = {"DuckDecodeNode": DuckDecodeNode}
-NODE_DISPLAY_NAME_MAPPINGS = {"DuckDecodeNode": "SSuper-SecureMediaProtection dec媒体内容保护解码V1.2"}
+NODE_DISPLAY_NAME_MAPPINGS = {"DuckDecodeNode": "鸭鸭图 SuperSecureMediaProtectionDec媒体内容保护 解码V1.2"}
