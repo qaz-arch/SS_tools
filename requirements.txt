@@ -4,3 +4,5 @@ pillow
 opencv-python
 soundfile
 imageio-ffmpeg
+qrcode
+pycryptodome

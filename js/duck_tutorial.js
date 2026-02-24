@@ -1,13 +1,20 @@
-import { app } from "../../scripts/app.js";
+import { app } from "/scripts/app.js";
 
 app.registerExtension({
     name: "SSTools.DuckTutorial",
     async beforeRegisterNodeDef(nodeType, nodeData, app) {
-        if (nodeData.name === "DuckHideNode" || nodeData.name === "DuckDecodeNode") {
+        if (nodeData.name === "DuckHideNode" || nodeData.name === "DuckDecodeNode" || nodeData.name === "DuckQREncodeNode") {
             const onNodeCreated = nodeType.prototype.onNodeCreated;
             nodeType.prototype.onNodeCreated = function () {
                 const r = onNodeCreated ? onNodeCreated.apply(this, arguments) : undefined;
                 
+                // Add "QR Code Content Encoder" Button only for DuckQREncodeNode
+                if (nodeData.name === "DuckQREncodeNode") {
+                    this.addWidget("button", "用二维码编码器定制内容", null, () => {
+                        window.open("https://duckp.airush.top/dashboard", "_blank");
+                    });
+                }
+
                 // Add Tutorial Video Collection Button
                 this.addWidget("button", "教学视频合集", null, () => {
                     window.open("http://duck.airush.top:81/jiaocheng.html", "_blank");
@@ -25,7 +32,7 @@ app.registerExtension({
 
                 // Add QQ Group Copy Button
                 const qqBtn = this.addWidget("button", "交流群", null, () => {
-                    const groupInfo = "一群：1067393850 二群：690810507";
+                    const groupInfo = "一群：1020585041 二群：690810507";
                     navigator.clipboard.writeText(groupInfo).then(() => {
                         qqBtn.label = "已复制到剪切板。" + groupInfo;
                         // Force redraw to update label
@@ -45,7 +52,7 @@ app.registerExtension({
                         name: "text_display",
                         computeSize: function(width) {
                             // Simple estimation for height
-                            const padding = 20;
+                            const padding = 30; // Increased padding
                             const availWidth = width - padding;
                             if (availWidth <= 0) return [width, 20];
                             
@@ -54,7 +61,7 @@ app.registerExtension({
                             let currentLen = 0;
                             for (let i = 0; i < text.length; i++) {
                                 // Approx width: Chinese ~11px, others ~7px
-                                currentLen += (text.charCodeAt(i) > 255) ? 11 : 7;
+                                currentLen += (text.charCodeAt(i) > 255) ? 12 : 7; // Slightly increased estimate
                                 if (currentLen > availWidth) {
                                     lineCount++;
                                     currentLen = 0;
@@ -66,7 +73,7 @@ app.registerExtension({
                             ctx.fillStyle = color;
                             ctx.font = "11px Arial";
                             const lineHeight = 16;
-                            const maxWidth = widget_width - 20;
+                            const maxWidth = widget_width - 30; // Increased margin
                             
                             const chars = text.split('');
                             let line = '';
