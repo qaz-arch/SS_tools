@@ -10,6 +10,9 @@ app.registerExtension({
                 
                 // Add "QR Code Content Encoder" Button only for DuckQREncodeNode
                 if (nodeData.name === "DuckQREncodeNode") {
+                    this.addWidget("button", "二维码引流教程", null, () => {
+                        window.open("http://duck.airush.top:81/qr_jump.html", "_blank");
+                    });
                     this.addWidget("button", "用二维码编码器定制内容", null, () => {
                         window.open("https://duckp.airush.top/dashboard", "_blank");
                     });
