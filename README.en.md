@@ -54,6 +54,7 @@ Workflow for String
   - git clone git@github.com:copyangle/SS_tools.git
   - cd SS_tools
   - pip install -r requirements.txt
+- ps:moviepy>=2.0，numpy<=1.26.4
 
 **Component Overview**
 - ConfyUI nodes:

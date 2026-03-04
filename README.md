@@ -64,7 +64,7 @@ Your use or deployment of this project shall constitute your acceptance of the a
   - cd SS_tools
   - pip install -r requirements.txt
 
-- 特别注意：安装完依赖包后确认包moviepy>=2.0
+- 特别注意：安装完依赖包后确认包moviepy>=2.0，numpy<=1.26.4
 
 **组件概览**
 - confyUI节点：
