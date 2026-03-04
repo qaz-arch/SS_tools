@@ -27,10 +27,12 @@ Your use or deployment of this project shall constitute your acceptance of the a
 - 压缩模式3档可选
 - 提供macOS本地工具
 - 提供本地UI工具精简版
-- 小黄鸭解码免费网页版：http://duck.airush.top:81/
+- 小黄鸭浏览器插件：http://duckp.airush.top/
+- 小黄鸭解码网页版：http://duck.airush.top:81/
 
 ## 相关链接：
 - 解码教学视频: https://www.bilibili.com/video/BV1w6qYBREzV
+- 浏览器插件使用方法：https://www.bilibili.com/video/BV1QaAozBE2H
 - 解码视频教程合集：https://space.bilibili.com/3690984330234757/lists/7159610?type=season
 - 网页版使用教程：https://www.bilibili.com/video/BV1K2icBqES3/
 - 现成工作流：https://www.runninghub.cn/post/2000762471365439490/?inviteCode=rh-v1393
