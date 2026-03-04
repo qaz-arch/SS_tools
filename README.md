@@ -4,7 +4,7 @@
   <a href="README.en.md">🇬🇧 English</a>
 </div>
 
-# SSTool Super-SecureMediaProtection媒体内容保护 V1.2
+# Super-SecureMediaProtection鸭鸭图媒体内容保护 V1.2
 
 声明：
 本项目初衷是提供一种有趣的文件打包方式，未考虑任何商业用途。
