@@ -19,14 +19,14 @@ Your use or deployment of this project shall constitute your acceptance of the a
 ![媒体保护工具演示](https://github.com/copyangle/SS_tools/blob/main/test.png "鸭子图媒体保护工具")
 
 ## 主要功能和特点：
-- 媒体内容保护：将图片/视频隐藏在卡通鸭子图中，可选密码保护
+- 媒体内容保护：将图片/视频/文本内容隐藏在卡通鸭子图中，可选密码保护
 - 媒体内容提取：从鸭子图中提取原始图片/视频数据
 - 提供以上功能的ConfyUI工作流节点
 - 提供以上功能的本地exe文件，支持本地打包、提取
 - 打包、提取速度极快
 - 压缩模式3档可选
 - 提供macOS本地工具
-- 提供本地UI工具精简版
+- 提供windows本地窗口界面工具
 - 小黄鸭浏览器插件：http://duckp.airush.top/
 - 小黄鸭解码网页版：http://duck.airush.top:81/
 
