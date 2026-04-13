@@ -20,7 +20,7 @@ The developer shall not be liable for any losses, liabilities, or legal risks ar
 - Provide local tools for macOS
 - Duck Image Local UI Decoder Lite V1.0: 鸭鸭图本地UI解码工具精简版V1.0.rar
 - Duck Browser Extension：http://duckp.airush.top/
-- Duck Decoder Web：http://duck.airush.top:81/
+- Duck Decoder Web：https://duck.airush.top
 
 ## Related Links:
 - Video Tutorial: https://www.bilibili.com/video/BV1w6qYBREzV

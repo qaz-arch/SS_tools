@@ -28,7 +28,7 @@ Your use or deployment of this project shall constitute your acceptance of the a
 - 提供macOS本地工具
 - 提供windows本地窗口界面工具
 - 小黄鸭浏览器插件：http://duckp.airush.top/
-- 小黄鸭解码网页版：http://duck.airush.top:81/
+- 小黄鸭解码网页版：https://duck.airush.top
 
 ## 相关链接：
 - 解码教学视频: https://www.bilibili.com/video/BV1w6qYBREzV
