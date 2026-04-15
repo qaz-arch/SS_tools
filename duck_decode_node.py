@@ -1,8 +1,10 @@
 import io
 import os
 import struct
-import numpy as np
 import subprocess
+import tempfile
+import wave
+import numpy as np
 from typing import Any, List
 from PIL import Image
 import torch
@@ -114,6 +116,51 @@ def _tensor_to_pil(image: torch.Tensor) -> Image.Image:
 def _pil_to_tensor(image: Image.Image) -> torch.Tensor:
     arr = np.array(image).astype(np.float32) / 255.0
     return torch.from_numpy(arr)[None, ...]
+
+def _extract_audio_via_ffmpeg_to_array(video_path: str, sample_rate: int) -> np.ndarray | None:
+    """用途：当 MoviePy 音频读取失败时，使用 ffmpeg 导出临时 WAV，再稳妥读回 numpy。"""
+    temp_wav_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+            temp_wav_path = tf.name
+
+        cmd = [
+            "ffmpeg",
+            "-v", "error",
+            "-i", video_path,
+            "-vn",
+            "-acodec", "pcm_s16le",
+            "-ar", str(sample_rate),
+            "-ac", "2",
+            "-y",
+            temp_wav_path,
+        ]
+        subprocess.run(cmd, check=True, capture_output=True, timeout=120)
+
+        with wave.open(temp_wav_path, "rb") as wav_file:
+            channels = wav_file.getnchannels()
+            sample_width = wav_file.getsampwidth()
+            frame_count = wav_file.getnframes()
+            raw_audio = wav_file.readframes(frame_count)
+
+        if sample_width != 2 or not raw_audio:
+            return None
+
+        audio_np = np.frombuffer(raw_audio, dtype=np.int16).astype(np.float32) / 32768.0
+        if channels > 1:
+            audio_np = audio_np.reshape(-1, channels)
+        else:
+            audio_np = audio_np.reshape(-1, 1)
+        return audio_np
+    except Exception as e:
+        print(f"FFmpeg fallback audio extraction failed: {e}")
+        return None
+    finally:
+        if temp_wav_path and os.path.exists(temp_wav_path):
+            try:
+                os.unlink(temp_wav_path)
+            except Exception:
+                pass
 
 def binpng_bytes_to_mp4_bytes(p: str) -> bytes:
     img = Image.open(p).convert("RGB")
@@ -240,86 +287,47 @@ class DuckDecodeNode:
                         continue
             
             if clip.audio is not None:
-                # todo 这个部分与RH平台存在包冲突
                 try:
                     sr_attr = getattr(clip.audio, "fps", None)
                     sr = int(round(sr_attr)) if sr_attr else 44100
-                    
-                    audio_np = None
-                    
-                    # 判断 MoviePy 版本，如果是 1.x 则直接使用 ffmpeg 提取
-                    is_moviepy_1x = False
-                    if hasattr(moviepy, "__version__") and moviepy.__version__.startswith("1."):
-                        is_moviepy_1x = True
-                    
-                    if is_moviepy_1x:
-                        try:
-                            # 使用 ffmpeg 直接提取音频为 raw float32 pcm
-                            # -vn: 禁用视频
-                            # -f f32le: 输出格式 float32 little endian
-                            # -acodec pcm_f32le: 编码器
-                            # -ar {sr}: 采样率
-                            # -ac 2: 声道数 (强制双声道以简化处理，或者先探测？这里假设双声道通用)
-                            # -: 输出到 stdout
-                            cmd = [
-                                "ffmpeg",
-                                "-v", "error",
-                                "-i", final_path,
-                                "-vn",
-                                "-f", "f32le",
-                                "-acodec", "pcm_f32le",
-                                "-ar", str(sr),
-                                "-ac", "2",
-                                "-"
-                            ]
-                            # 运行命令并获取输出
-                            process = subprocess.run(cmd, capture_output=True, check=True)
-                            raw_audio = process.stdout
-                            
-                            if raw_audio:
-                                audio_np = np.frombuffer(raw_audio, dtype=np.float32)
-                                audio_np = audio_np.reshape(-1, 2) # 重塑为 (Samples, Channels=2)
-                        except Exception as e:
-                            print(f"FFmpeg audio extraction failed: {e}")
-                            audio_np = None
 
-                    # 如果不是 1.x 或者 ffmpeg 失败，尝试原有的 moviepy 逻辑 (作为 fallback 或主逻辑)
-                    if audio_np is None and not is_moviepy_1x:
+                    audio_np = None
+                    audio_errors = []
+
+                    # 主分支策略：
+                    # 1. 优先使用 MoviePy 读取音频，兼容 1.x / 2.x 的参数差异。
+                    # 2. 如果 MoviePy 失败，仅使用 ffmpeg 导出临时 WAV 作为单一兜底。
+                    # 3. 不再恢复旧的 stdout 全量抓取和 iter_chunks 分支，避免 RH 平台假死风险。
+                    moviepy_audio_readers = [
+                        lambda: clip.audio.to_soundarray(fps=sr, nbytes=4),
+                        lambda: clip.audio.to_soundarray(fps=sr),
+                        lambda: clip.audio.to_soundarray(),
+                    ]
+
+                    for reader in moviepy_audio_readers:
                         try:
-                            audio_np = clip.audio.to_soundarray(fps=sr, nbytes=4)
-                        except Exception:
-                            pass
-                        
-                        if audio_np is None:
-                            # Fallback: 手动读取音频块
-                            try:
-                                chunks = []
-                                iterator = None
-                                try:
-                                    iterator = clip.audio.iter_chunks(fps=sr, nbytes=4, quantize=False)
-                                except TypeError:
-                                    iterator = clip.audio.iter_chunks(fps=sr)
-                                
-                                if iterator:
-                                    for chunk in iterator:
-                                        chunks.append(chunk)
-                                
-                                if len(chunks) > 0:
-                                    audio_np = np.vstack(chunks)
-                            except Exception as e:
-                                print(f"Manual audio chunk read failed: {e}")
-                        
-                        if audio_np is None:
-                             try:
-                                 audio_np = clip.audio.to_soundarray()
-                             except Exception:
-                                 pass
+                            audio_np = reader()
+                            if audio_np is not None:
+                                break
+                        except TypeError as e:
+                            audio_errors.append(f"TypeError: {e}")
+                        except Exception as e:
+                            audio_errors.append(str(e))
 
                     if audio_np is None:
-                         print("Audio decoding completely failed, returning silent audio.")
-                         audio_np = np.zeros((sr, 2), dtype=np.float32)
+                        print("MoviePy 音频读取失败，尝试 ffmpeg 临时 WAV 兜底")
+                        if audio_errors:
+                            print("MoviePy audio errors:", " | ".join(audio_errors))
+                        audio_np = _extract_audio_via_ffmpeg_to_array(final_path, sr)
+
+                    if audio_np is None:
+                        print("Audio decoding completely failed, returning silent audio.")
+                        if audio_errors:
+                            print("MoviePy audio errors:", " | ".join(audio_errors))
+                        audio_np = np.zeros((sr, 2), dtype=np.float32)
 
                     # 归一化处理
+                    audio_np = np.asarray(audio_np, dtype=np.float32)
                     max_val = np.max(np.abs(audio_np))
                     if max_val > 0:
                         audio_np = audio_np / max_val
@@ -339,4 +347,4 @@ class DuckDecodeNode:
 
 
 NODE_CLASS_MAPPINGS = {"DuckDecodeNode": DuckDecodeNode}
-NODE_DISPLAY_NAME_MAPPINGS = {"DuckDecodeNode": "鸭鸭图 SuperSecureMediaProtectionDec媒体内容保护 解码V1.2"}
+NODE_DISPLAY_NAME_MAPPINGS = {"DuckDecodeNode": "鸭鸭图 SuperSecureMediaProtectionDec媒体内容保护 解码V1.2.2"}
